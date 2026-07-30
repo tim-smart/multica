@@ -122,12 +122,9 @@ interface Props {
   disabled?: boolean;
   disabledReason?: string;
 
-  /** When true the composer renders flush at the bottom of its parent
-   *  WITHOUT the KeyboardStickyView keyboard-aware lift + safe-area
-   *  inset. Chat's parent owns its own KeyboardAvoidingView and
-   *  bottom-inset handling (chat.tsx), so the composer must not also
-   *  apply them. Comment's parent does NOT handle keyboard, so the
-   *  composer keeps the default `true`. */
+  /** When true, the composer owns its keyboard-aware lift and safe-area
+   *  inset through KeyboardStickyView. Callers with a platform-level
+   *  KeyboardAvoidingView can disable it to avoid double-stacking. */
   manageKeyboard?: boolean;
 }
 
@@ -596,9 +593,8 @@ export function MessageComposer({
 
   const body = expanded ? expandedContent : pillContent;
 
-  // When the parent owns keyboard handling (chat.tsx wraps in
-  // KeyboardAvoidingView + SafeAreaView), skip the KeyboardStickyView —
-  // double-stacking causes the composer to jump twice on keyboard show.
+  // Skip this when a parent owns keyboard movement; otherwise both
+  // containers move the composer and it jumps twice as the keyboard opens.
   if (!manageKeyboard) return body;
 
   return (

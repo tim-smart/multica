@@ -19,9 +19,10 @@
  *     server back-fills `chat_message_id` on each row when the message
  *     persists (server-side). `MessageComposer` calls `api.uploadFile`
  *     without `{ issueId, commentId }`.
- *   - **Parent owns keyboard**: chat.tsx wraps in KeyboardAvoidingView +
- *     SafeAreaView, so `manageKeyboard={false}` prevents the composer
- *     from double-stacking its own keyboard handling.
+ *   - **Parent owns keyboard handling**: chat.tsx's KeyboardAvoidingView
+ *     resizes the entire message-list + composer region. A nested
+ *     KeyboardStickyView would lift only the composer a second time and
+ *     leave message content exposed beneath it.
  *
  * Previously a hand-written 400-LOC twin of inline-comment-composer.tsx;
  * now ~50 LOC plus the StopButton subcomponent.
@@ -29,7 +30,6 @@
 import { useCallback } from "react";
 import { Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { MessageComposer } from "@/components/composer/message-composer";
 import { useWorkspaceStore } from "@/data/workspace-store";
