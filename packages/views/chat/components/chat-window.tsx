@@ -26,6 +26,7 @@ import {
 } from "@multica/core/agents";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { useAppForeground } from "../../common/use-app-foreground";
+import { RowActionsMenu } from "../../common/row-actions-menu";
 import {
   PickerEmpty,
   PickerItem,
@@ -1337,6 +1338,9 @@ function SessionDropdown({
         }}
         onKeyDown={(e) => {
           if (isRenaming || isConfirmingAction) return;
+          // A key pressed inside one of the row's own controls belongs to that
+          // control — activating the action menu must not also select the row.
+          if (e.target !== e.currentTarget) return;
           if (e.key !== "Enter" && e.key !== " ") return;
           e.preventDefault();
           handleSelectSession(session);
@@ -1422,7 +1426,7 @@ function SessionDropdown({
             </div>
           ) : (
             <div className="flex shrink-0 items-center">
-              <div className="flex h-7 items-center justify-end gap-1.5 text-caption text-muted-foreground group-hover/history-row:hidden">
+              <div className="flex h-7 items-center justify-end gap-1.5 text-caption text-muted-foreground md:group-hover/history-row:hidden md:group-focus-within/history-row:hidden">
                 {isRunning && <Loader2 className="size-3 animate-spin" />}
                 {showCompleted && !isRunning && <Check className="size-3 text-emerald-500" />}
                 {showUnread && !isRunning && !showCompleted && (
@@ -1434,7 +1438,40 @@ function SessionDropdown({
                 )}
                 <span className={cn("truncate", (showUnread || showCompleted || isRunning) && "font-medium text-foreground")}>{trailingStatus}</span>
               </div>
-              <div className="hidden h-7 items-center gap-0.5 group-hover/history-row:flex">
+              {/* Touch has no hover: below `md` the status above stays put and
+                  these same actions move into the row's compact menu. */}
+              <RowActionsMenu
+                label={t(($) => $.session_history.row_actions_aria)}
+                groups={[
+                  isRunning
+                    ? pendingTask
+                      ? [
+                          {
+                            key: "stop",
+                            icon: <Square className="size-3 fill-current" />,
+                            label: t(($) => $.session_history.row_stop_aria),
+                            danger: true,
+                            onSelect: () => setConfirmingStopId(session.id),
+                          },
+                        ]
+                      : []
+                    : [
+                        {
+                          key: "rename",
+                          icon: <Pencil className="size-3.5" />,
+                          label: t(($) => $.session_history.row_rename_aria),
+                          onSelect: () => setRenamingId(session.id),
+                        },
+                        {
+                          key: "archive",
+                          icon: <Archive className="size-3.5" />,
+                          label: t(($) => $.list.archive),
+                          onSelect: () => handleArchive(session),
+                        },
+                      ],
+                ]}
+              />
+              <div className="hidden h-7 items-center gap-0.5 md:group-hover/history-row:flex md:group-focus-within/history-row:flex">
                 {isRunning && pendingTask && (
                   <button
                     type="button"

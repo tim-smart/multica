@@ -28,6 +28,7 @@ import {
 import { useChatStore } from "@multica/core/chat";
 import type { Agent, ChatSession, PendingChatTasksResponse } from "@multica/core/types";
 import { ActorAvatar } from "../../common/actor-avatar";
+import { RowActionsMenu } from "../../common/row-actions-menu";
 import { resolveClickIntent, useOptionalNavigation } from "../../navigation";
 import { createLogger } from "@multica/core/logger";
 import { removeChatMessageFromCaches } from "@multica/core/realtime";
@@ -293,6 +294,9 @@ export function ChatThreadList({
         }}
         onKeyDown={(e) => {
           if (isConfirmingAction) return;
+          // A key pressed inside one of the row's own controls belongs to that
+          // control — activating the action menu must not also select the row.
+          if (e.target !== e.currentTarget) return;
           if (e.key !== "Enter" && e.key !== " ") return;
           e.preventDefault();
           onSelectSession(session);
@@ -374,12 +378,71 @@ export function ChatThreadList({
             </div>
         </div>
 
+        {/* Compact action menu — the touch equivalent of the hover actions
+            below, which a pointer without hover can never reach. It takes real
+            layout space (rather than overlaying the preview) and gives way to
+            the hover strip from `md` up. */}
+        {!isConfirmingAction && (
+          <RowActionsMenu
+            label={t(($) => $.list.row_actions_aria)}
+            groups={[
+              view === "archived"
+                ? [
+                    {
+                      key: "unarchive",
+                      icon: <ArchiveRestore className="size-4" />,
+                      label: t(($) => $.list.unarchive),
+                      onSelect: () =>
+                        setArchived.mutate({ sessionId: session.id, archived: false }),
+                    },
+                    {
+                      key: "delete",
+                      icon: <Trash2 className="size-4" />,
+                      label: t(($) => $.session_history.row_delete_aria),
+                      danger: true,
+                      onSelect: () => setConfirmingDeleteId(session.id),
+                    },
+                  ]
+                : [
+                    {
+                      key: "pin",
+                      icon: session.pinned ? (
+                        <PinOff className="size-4" />
+                      ) : (
+                        <Pin className="size-4 -rotate-45" />
+                      ),
+                      label: session.pinned
+                        ? t(($) => $.list.unpin)
+                        : t(($) => $.list.pin),
+                      onSelect: () =>
+                        setPinned.mutate({ sessionId: session.id, pinned: !session.pinned }),
+                    },
+                    isRunning
+                      ? {
+                          key: "stop",
+                          icon: <Square className="size-3 fill-current" />,
+                          label: t(($) => $.session_history.row_stop_aria),
+                          danger: true,
+                          onSelect: () => setConfirmingStopId(session.id),
+                        }
+                      : {
+                          key: "archive",
+                          icon: <Archive className="size-4" />,
+                          label: t(($) => $.list.archive),
+                          onSelect: () => onArchive(session),
+                        },
+                  ],
+            ]}
+          />
+        )}
+
         {/* Hover actions — absolutely positioned so showing/hiding them never
             changes the row height (which was making the list jump). The archived
             view is the only place hard-delete lives; the history view offers the
-            reversible archive instead. */}
+            reversible archive instead. Keyboard focus reveals them too, so they
+            are reachable without a mouse. */}
         {!isConfirmingAction && (
-          <div className="absolute inset-y-0 right-1 hidden items-center gap-0.5 rounded-md bg-gradient-to-l from-accent from-40% to-transparent pl-10 pr-1 group-hover/row:flex">
+          <div className="absolute inset-y-0 right-1 hidden items-center gap-0.5 rounded-md bg-gradient-to-l from-accent from-40% to-transparent pl-10 pr-1 md:group-hover/row:flex md:group-focus-within/row:flex">
             {view === "archived" ? (
               <>
                 <RowAction
