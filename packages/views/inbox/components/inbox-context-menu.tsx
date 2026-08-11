@@ -38,8 +38,6 @@ import { useInboxItemActions, type InboxRowActions } from "./inbox-item-actions"
  * hover — offers exactly these actions.
  */
 
-export type { InboxRowActions };
-
 interface ActiveMenu {
   item: InboxItem;
   position: { x: number; y: number };

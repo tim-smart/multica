@@ -87,19 +87,22 @@ const sessions: ChatSession[] = [
   makeSession({ id: "s3", updated_at: "2026-07-08T01:00:00Z" }),
 ];
 
-function renderList(activeSessionId: string | null, onArchive = vi.fn()) {
+function renderList(
+  activeSessionId: string | null,
+  { onArchive = vi.fn(), onSelectSession = vi.fn() } = {},
+) {
   render(
     <I18nProvider locale="en" resources={TEST_RESOURCES}>
       <ChatThreadList
         sessions={sessions}
         agents={[agent]}
         activeSessionId={activeSessionId}
-        onSelectSession={vi.fn()}
+        onSelectSession={onSelectSession}
         onArchive={onArchive}
       />
     </I18nProvider>,
   );
-  return onArchive;
+  return { onArchive, onSelectSession };
 }
 
 const ARCHIVE_LABEL = enChat.list.archive;
@@ -111,7 +114,7 @@ describe("ChatThreadList archive delegation", () => {
   });
 
   it("delegates the history-row Archive action to onArchive with that session", () => {
-    const onArchive = renderList("s2");
+    const { onArchive } = renderList("s2");
     // Rows render in order s1, s2, s3 → the second archive button is s2's.
     const archiveButtons = screen.getAllByRole("button", { name: ARCHIVE_LABEL });
     fireEvent.click(archiveButtons[1]!);
@@ -121,7 +124,7 @@ describe("ChatThreadList archive delegation", () => {
   });
 
   it("passes the archived row's session even when it isn't the open one", () => {
-    const onArchive = renderList("s1");
+    const { onArchive } = renderList("s1");
     const archiveButtons = screen.getAllByRole("button", { name: ARCHIVE_LABEL });
     // Archive s3 while s1 is the open one — the parent decides what to do.
     fireEvent.click(archiveButtons[2]!);
@@ -184,7 +187,7 @@ describe("ChatThreadList compact row menu", () => {
     );
 
   it("archives the row it belongs to", async () => {
-    const onArchive = renderList("s1");
+    const { onArchive } = renderList("s1");
 
     openRowMenu(1);
     fireEvent.click(await screen.findByRole("menuitem", { name: ARCHIVE_LABEL }));
@@ -202,18 +205,7 @@ describe("ChatThreadList compact row menu", () => {
   });
 
   it("does not select the row when the menu opens", () => {
-    const onSelectSession = vi.fn();
-    render(
-      <I18nProvider locale="en" resources={TEST_RESOURCES}>
-        <ChatThreadList
-          sessions={sessions}
-          agents={[agent]}
-          activeSessionId={null}
-          onSelectSession={onSelectSession}
-          onArchive={vi.fn()}
-        />
-      </I18nProvider>,
-    );
+    const { onSelectSession } = renderList(null);
 
     openRowMenu(0);
 
@@ -223,18 +215,7 @@ describe("ChatThreadList compact row menu", () => {
 
 describe("ChatThreadList row keyboard semantics", () => {
   it("selects the row on Enter", () => {
-    const onSelectSession = vi.fn();
-    render(
-      <I18nProvider locale="en" resources={TEST_RESOURCES}>
-        <ChatThreadList
-          sessions={sessions}
-          agents={[agent]}
-          activeSessionId={null}
-          onSelectSession={onSelectSession}
-          onArchive={vi.fn()}
-        />
-      </I18nProvider>,
-    );
+    const { onSelectSession } = renderList(null);
 
     const row = screen.getByText("Chat s1").closest("[tabindex]")!;
     fireEvent.keyDown(row, { key: "Enter" });
@@ -244,18 +225,7 @@ describe("ChatThreadList row keyboard semantics", () => {
 
   it("leaves Enter pressed inside a row control to that control", () => {
     // Opening the action menu with the keyboard must not also select the row.
-    const onSelectSession = vi.fn();
-    render(
-      <I18nProvider locale="en" resources={TEST_RESOURCES}>
-        <ChatThreadList
-          sessions={sessions}
-          agents={[agent]}
-          activeSessionId={null}
-          onSelectSession={onSelectSession}
-          onArchive={vi.fn()}
-        />
-      </I18nProvider>,
-    );
+    const { onSelectSession } = renderList(null);
 
     fireEvent.keyDown(
       screen.getAllByRole("button", { name: enChat.list.row_actions_aria })[0]!,

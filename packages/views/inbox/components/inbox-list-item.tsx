@@ -12,6 +12,7 @@ import { InboxDetailLabel } from "./inbox-detail-label";
 import { getInboxDisplayTitle } from "./inbox-display";
 import { useInboxContextMenu } from "./inbox-context-menu";
 import { InboxRowMenu } from "./inbox-row-menu";
+import { handleRowActivationKey } from "../../common/row-actions-menu";
 import { useT } from "../../i18n";
 import { paths, useWorkspaceSlug } from "@multica/core/paths";
 import { resolveClickIntent, useIntentNavigate } from "../../navigation";
@@ -92,12 +93,7 @@ export function InboxListItem({
         }
         onClick();
       }}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key !== "Enter" && e.key !== " ") return;
-        e.preventDefault();
-        onClick();
-      }}
+      onKeyDown={(e) => handleRowActivationKey(e, onClick)}
       onAuxClick={(e) => {
         if (e.defaultPrevented || e.button !== 1 || !issueHref) return;
         e.preventDefault();

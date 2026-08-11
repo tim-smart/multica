@@ -24,13 +24,7 @@ export function InboxRowMenu({
 }) {
   const { t } = useT("inbox");
   const actions = useInboxRowActions();
-  // Hooks cannot be conditional; the no-op fallback is never rendered, since
-  // an absent provider returns null below.
-  const groups = useInboxItemActions(
-    item,
-    view,
-    actions ?? { onMarkRead: () => {}, onMarkUnread: () => {}, onAction: () => {} },
-  );
+  const groups = useInboxItemActions(item, view, actions);
   if (!actions) return null;
 
   return <RowActionsMenu label={t(($) => $.list.actions_aria)} groups={groups} />;

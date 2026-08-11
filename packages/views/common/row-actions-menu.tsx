@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type KeyboardEvent, type ReactNode } from "react";
 import { MoreHorizontal } from "lucide-react";
 import {
   DropdownMenu,
@@ -16,6 +16,21 @@ export interface RowActionItem {
   label: string;
   onSelect: () => void;
   danger?: boolean;
+}
+
+/**
+ * Enter/Space activation for a `role="button"` row that hosts its own
+ * controls (this menu, inline buttons): a key pressed inside one of those
+ * controls belongs to that control, not to the row.
+ */
+export function handleRowActivationKey(
+  e: KeyboardEvent<HTMLElement>,
+  activate: () => void,
+) {
+  if (e.target !== e.currentTarget) return;
+  if (e.key !== "Enter" && e.key !== " ") return;
+  e.preventDefault();
+  activate();
 }
 
 /**

@@ -1,9 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { Archive, ArchiveRestore, Check, CircleDot, ExternalLink } from "lucide-react";
 import { paths, useWorkspaceSlug } from "@multica/core/paths";
 import type { InboxItem } from "@multica/core/types";
+import type { RowActionItem } from "../../common/row-actions-menu";
 import { useIntentNavigate } from "../../navigation";
 import { useT } from "../../i18n";
 import type { InboxView } from "./inbox-view";
@@ -19,37 +19,34 @@ export interface InboxRowActions {
   onAction: (id: string) => void;
 }
 
-export interface InboxItemAction {
-  key: string;
-  label: string;
-  icon: ReactNode;
-  onSelect: () => void;
-}
-
 /**
  * The actions an inbox row offers, grouped the way separators divide them.
  *
  * Shared by the desktop right-click menu and the compact per-row menu that
  * replaces the hover button below `md`, so the two can never drift: a pointer
  * with no hover state gets exactly the actions a right-click gives.
+ *
+ * `actions` may be null (no provider); the row then has nothing to offer.
  */
 export function useInboxItemActions(
   item: InboxItem,
   view: InboxView,
-  actions: InboxRowActions,
-): InboxItemAction[][] {
+  actions: InboxRowActions | null,
+): RowActionItem[][] {
   const { t } = useT("inbox");
   // Null-safe slug (not useWorkspacePaths, which throws): keeps the menus
   // renderable outside a workspace route; the item just doesn't show.
   const slug = useWorkspaceSlug();
   const intentNavigate = useIntentNavigate();
+  if (!actions) return [];
+
   const issueHref =
     slug && item.issue_id
       ? paths.workspace(slug).issueDetail(item.issue_id)
       : null;
   const isArchivedView = view === "archived";
 
-  const groups: InboxItemAction[][] = [];
+  const groups: RowActionItem[][] = [];
 
   // An explicit "Open in new tab" CTA is a foreground open — focus follows,
   // per the navigation spec's right-click row. Only rows that reference an

@@ -15,7 +15,8 @@ vi.mock("../../common/actor-avatar", () => ({ ActorAvatar: () => null }));
 vi.mock("./inbox-detail-label", () => ({ InboxDetailLabel: () => null }));
 
 // Import after mocks.
-import { InboxContextMenuProvider, type InboxRowActions } from "./inbox-context-menu";
+import { InboxContextMenuProvider } from "./inbox-context-menu";
+import type { InboxRowActions } from "./inbox-item-actions";
 import { InboxListItem } from "./inbox-list-item";
 
 const TEST_RESOURCES = { en: { inbox: enInbox } };
