@@ -6,11 +6,13 @@ import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { ThemeProvider } from "@react-navigation/native";
 import { PortalHost } from "@rn-primitives/portal";
+import { AndroidActionSheetHost } from "@/components/ui/android-action-sheet-host";
 import { api } from "@/data/api";
 import { queryClient } from "@/data/query-client";
 import { useAuthStore } from "@/data/auth-store";
@@ -73,28 +75,31 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <KeyboardProvider>
-          <QueryClientProvider client={queryClient}>
-            <ThemeProvider value={NAV_THEME[colorScheme]}>
-              <AuthInitializer>
-                <LightboxProvider>
-                  <StatusBar
-                    style={themeColors.statusBarStyle}
-                    backgroundColor={
-                      Platform.OS === "android" ? themeColors.background : undefined
-                    }
-                  />
-                  <Stack screenOptions={{ headerShown: false }}>
-                    <Stack.Screen name="index" />
-                    <Stack.Screen name="(auth)" />
-                    <Stack.Screen name="(app)" />
-                  </Stack>
-                  <PortalHost />
-                </LightboxProvider>
-              </AuthInitializer>
-            </ThemeProvider>
-          </QueryClientProvider>
-        </KeyboardProvider>
+        <BottomSheetModalProvider>
+          <KeyboardProvider>
+            <QueryClientProvider client={queryClient}>
+              <ThemeProvider value={NAV_THEME[colorScheme]}>
+                <AuthInitializer>
+                  <LightboxProvider>
+                    <StatusBar
+                      style={themeColors.statusBarStyle}
+                      backgroundColor={
+                        Platform.OS === "android" ? themeColors.background : undefined
+                      }
+                    />
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen name="index" />
+                      <Stack.Screen name="(auth)" />
+                      <Stack.Screen name="(app)" />
+                    </Stack>
+                    <PortalHost />
+                    <AndroidActionSheetHost />
+                  </LightboxProvider>
+                </AuthInitializer>
+              </ThemeProvider>
+            </QueryClientProvider>
+          </KeyboardProvider>
+        </BottomSheetModalProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

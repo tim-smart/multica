@@ -90,6 +90,7 @@ Start minimal. Add to this list when actually adopted — do NOT pre-list librar
 - **TanStack Query 5** — mobile owns its `QueryClient` with `AppState` focus listener + `NetInfo` online listener.
 - **Zustand** — mobile-local state only.
 - **expo-secure-store** — auth token persistence + theme preference (`light` / `dark` / `system`).
+- **@gorhom/bottom-sheet 5** — Android presentation for the shared action-sheet wrapper (`lib/action-sheet.ts`); iOS keeps native `ActionSheetIOS`.
 
 When upgrading any of these, update this list.
 

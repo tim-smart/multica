@@ -1,24 +1,45 @@
-import {
-  ActionSheetIOS,
-  Alert,
-  Platform,
-  type AlertButton,
-} from "react-native";
+/**
+ * Shared action-sheet wrapper (apps/mobile/CLAUDE.md §UI components):
+ * iOS presents the native ActionSheetIOS; Android presents a Material
+ * bottom sheet (@gorhom/bottom-sheet) rendered by <AndroidActionSheetHost />
+ * mounted once in app/_layout.tsx. Feature code must never import
+ * ActionSheetIOS directly.
+ *
+ * The Android sheet is store-driven because this API is imperative — there
+ * is no React context at the call site. `showActionSheetWithOptions` pushes
+ * the config into the store and the host presents it. The host fires the
+ * callback only after the sheet has fully dismissed — matching
+ * ActionSheetIOS, so a follow-up sheet can present immediately (see the
+ * nested React… flow in components/issue/comment-context-menu.tsx).
+ */
+import { ActionSheetIOS, Platform } from "react-native";
+import { create } from "zustand";
 
-type ActionSheetOptions = Parameters<
+export type ActionSheetOptions = Parameters<
   typeof ActionSheetIOS.showActionSheetWithOptions
 >[0];
-type ActionSheetCallback = Parameters<
+export type ActionSheetCallback = Parameters<
   typeof ActionSheetIOS.showActionSheetWithOptions
 >[1];
 
-type AndroidAlertConfig = {
-  buttonIndices: number[];
-  nextStart?: number;
+interface ActiveSheet {
   options: ActionSheetOptions;
   callback: ActionSheetCallback;
-  actionIndices: number[];
-};
+}
+
+interface AndroidActionSheetState {
+  sheet: ActiveSheet | null;
+  present: (options: ActionSheetOptions, callback: ActionSheetCallback) => void;
+  clear: () => void;
+}
+
+export const useAndroidActionSheetStore = create<AndroidActionSheetState>(
+  (set) => ({
+    sheet: null,
+    present: (options, callback) => set({ sheet: { options, callback } }),
+    clear: () => set({ sheet: null }),
+  }),
+);
 
 export function showActionSheetWithOptions(
   options: ActionSheetOptions,
@@ -29,127 +50,6 @@ export function showActionSheetWithOptions(
     return;
   }
 
-  presentAndroidActionSheet(options, callback);
-}
-
-function presentAndroidActionSheet(
-  options: ActionSheetOptions,
-  callback: ActionSheetCallback,
-) {
   if (options.options.length === 0) return;
-
-  const cancelButtonIndex = options.cancelButtonIndex;
-  const actionIndices = options.options
-    .map((_, index) => index)
-    .filter((index) => index !== cancelButtonIndex);
-
-  if (options.options.length <= 3) {
-    presentAndroidAlert({
-      buttonIndices: options.options.map((_, index) => index),
-      options,
-      callback,
-      actionIndices,
-    });
-    return;
-  }
-
-  if (cancelButtonIndex !== undefined && actionIndices.length <= 3) {
-    presentAndroidAlert({
-      buttonIndices: actionIndices,
-      options,
-      callback,
-      actionIndices,
-    });
-    return;
-  }
-
-  presentAndroidPage({
-    start: 0,
-    options,
-    callback,
-    actionIndices,
-  });
-}
-
-function presentAndroidPage(args: {
-  start: number;
-  options: ActionSheetOptions;
-  callback: ActionSheetCallback;
-  actionIndices: number[];
-}) {
-  const { start, options, callback, actionIndices } = args;
-  const remaining = actionIndices.length - start;
-  const visibleCount = remaining > 3 ? 2 : Math.min(remaining, 3);
-  const nextStart = start + visibleCount;
-
-  presentAndroidAlert({
-    buttonIndices: actionIndices.slice(start, nextStart),
-    nextStart: nextStart < actionIndices.length ? nextStart : undefined,
-    options,
-    callback,
-    actionIndices,
-  });
-}
-
-function presentAndroidAlert({
-  buttonIndices,
-  nextStart,
-  options,
-  callback,
-  actionIndices,
-}: AndroidAlertConfig) {
-  let handled = false;
-
-  const buttons: AlertButton[] = buttonIndices.map((buttonIndex) => ({
-    text: options.options[buttonIndex],
-    style: getButtonStyle(options, buttonIndex),
-    onPress: () => {
-      handled = true;
-      setTimeout(() => callback(buttonIndex), 0);
-    },
-  }));
-
-  if (nextStart !== undefined) {
-    buttons.push({
-      text: "More…",
-      onPress: () => {
-        handled = true;
-        setTimeout(
-          () =>
-            presentAndroidPage({
-              start: nextStart,
-              options,
-              callback,
-              actionIndices,
-            }),
-          0,
-        );
-      },
-    });
-  }
-
-  Alert.alert(options.title ?? "", options.message, buttons, {
-    cancelable: true,
-    onDismiss: () => {
-      if (!handled && options.cancelButtonIndex !== undefined) {
-        setTimeout(() => callback(options.cancelButtonIndex as number), 0);
-      }
-    },
-  });
-}
-
-function getButtonStyle(
-  options: ActionSheetOptions,
-  buttonIndex: number,
-): AlertButton["style"] {
-  if (buttonIndex === options.cancelButtonIndex) {
-    return "cancel";
-  }
-
-  const destructive = options.destructiveButtonIndex;
-  if (Array.isArray(destructive)) {
-    return destructive.includes(buttonIndex) ? "destructive" : "default";
-  }
-
-  return destructive === buttonIndex ? "destructive" : "default";
+  useAndroidActionSheetStore.getState().present(options, callback);
 }
