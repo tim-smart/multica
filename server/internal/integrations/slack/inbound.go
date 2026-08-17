@@ -174,7 +174,7 @@ func buildInbound(e slackevents.EventsAPIEvent, p buildInboundParams, mentionRe 
 	if p.threadTS != "" && p.threadTS != p.ts {
 		reply = &channel.ReplyCtx{MessageID: p.threadTS, RootID: p.threadTS}
 	}
-	text := cleanText(p.text, mentionRe)
+	text := appendForwardedText(cleanText(p.text, mentionRe), forwardedMessageText(e))
 	return channel.InboundMessage{
 		EventID:        p.ts,
 		MessageID:      p.ts,
@@ -192,6 +192,39 @@ func buildInbound(e slackevents.EventsAPIEvent, p buildInboundParams, mentionRe 
 		},
 		Raw: raw,
 	}
+}
+
+type forwardedAttachment struct {
+	slack.Attachment
+	IsMessageUnfurl bool `json:"is_msg_unfurl"`
+}
+
+// forwardedMessageText extracts only Slack message unfurls from the original
+// Events API payload. slack-go preserves their rendered attachment fields but
+// does not expose the is_msg_unfurl marker on slack.Attachment, so the raw inner
+// event retained by EventsAPIEvent is needed to distinguish forwards from
+// ordinary link previews.
+func forwardedMessageText(e slackevents.EventsAPIEvent) string {
+	callback, ok := e.Data.(*slackevents.EventsAPICallbackEvent)
+	if !ok || callback.InnerEvent == nil {
+		return ""
+	}
+	var event struct {
+		Attachments []forwardedAttachment `json:"attachments"`
+	}
+	if err := json.Unmarshal(*callback.InnerEvent, &event); err != nil {
+		return ""
+	}
+	parts := make([]string, 0, len(event.Attachments))
+	for _, attachment := range event.Attachments {
+		if !attachment.IsMessageUnfurl {
+			continue
+		}
+		if text := attributedAttachmentText(attachment.Attachment); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return truncateRunes(strings.Join(parts, "\n\n"), maxDerivedTextLen)
 }
 
 // cleanText strips a leading/embedded bot mention token and trims surrounding

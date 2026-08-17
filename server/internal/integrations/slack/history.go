@@ -288,7 +288,7 @@ const maxDerivedTextLen = 4000
 // system marker.
 func flattenSlackText(m slack.Message) string {
 	if t := strings.TrimSpace(m.Text); t != "" {
-		return t
+		return appendForwardedText(t, historyForwardedMessageText(m.Attachments))
 	}
 	parts := make([]string, 0, len(m.Attachments)+1)
 	for i := range m.Attachments {
@@ -327,6 +327,46 @@ func attachmentText(a slack.Attachment) string {
 		return t
 	}
 	return flattenBlocks(a.Blocks)
+}
+
+// appendForwardedText appends forwarded-message content under a single shared
+// label so live Events API ingestion and history reads render identically.
+func appendForwardedText(text, forwarded string) string {
+	if forwarded == "" {
+		return text
+	}
+	if text != "" {
+		text += "\n\n"
+	}
+	return text + "Forwarded message:\n" + forwarded
+}
+
+func attributedAttachmentText(a slack.Attachment) string {
+	text := attachmentText(a)
+	if text == "" {
+		return ""
+	}
+	if author := strings.TrimSpace(a.AuthorName); author != "" {
+		return author + ":\n" + text
+	}
+	return text
+}
+
+// historyForwardedMessageText recovers message unfurls after slack-go has
+// decoded a Web API history response. The SDK drops is_msg_unfurl, but retains
+// the original message timestamp; ordinary link-preview attachments do not
+// carry that ts. Live Events API ingestion uses the authoritative raw marker.
+func historyForwardedMessageText(attachments []slack.Attachment) string {
+	parts := make([]string, 0, len(attachments))
+	for _, attachment := range attachments {
+		if attachment.Ts == "" {
+			continue
+		}
+		if text := attributedAttachmentText(attachment); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return truncateRunes(strings.Join(parts, "\n\n"), maxDerivedTextLen)
 }
 
 // flattenBlocks renders Block Kit blocks to plain text, best-effort: it walks

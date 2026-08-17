@@ -287,6 +287,43 @@ func TestThreadRecoversBotAttachmentText(t *testing.T) {
 	}
 }
 
+func TestThreadIncludesForwardedMessageContent(t *testing.T) {
+	q := &fakeHistoryQueries{binding: groupBinding("50.000000"), inst: activeSlackInstall()}
+	root := slack.Message{Msg: slack.Msg{
+		User:      "U1",
+		Text:      "https://example.slack.com/archives/C1/p49",
+		Timestamp: "50.000000",
+		Attachments: []slack.Attachment{
+			{
+				AuthorName: "Bob",
+				Text:       "The deployment starts at 3pm.",
+				Ts:         "49.000000",
+				Footer:     "Posted in #deployments",
+			},
+			{
+				AuthorName:  "Example preview",
+				OriginalURL: "https://example.com",
+				Text:        "This normal attachment must stay out.",
+			},
+		},
+	}}
+	fc := &fakeHistoryClient{repliesMsgs: []slack.Message{root}}
+	h := newTestHistory(q, fc)
+
+	page, err := h.Thread(context.Background(), uid(9), "", channel.HistoryOptions{})
+	if err != nil {
+		t.Fatalf("Thread: %v", err)
+	}
+	got := findByTS(page.Messages, "50.000000")
+	if got == nil {
+		t.Fatalf("forwarded message was dropped: %+v", page.Messages)
+	}
+	const want = "https://example.slack.com/archives/C1/p49\n\nForwarded message:\nBob:\nThe deployment starts at 3pm."
+	if got.Text != want {
+		t.Errorf("forwarded history text = %q, want %q", got.Text, want)
+	}
+}
+
 func TestAttachmentTextPriority(t *testing.T) {
 	tests := []struct {
 		name string
