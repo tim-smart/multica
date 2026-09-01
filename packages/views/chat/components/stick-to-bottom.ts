@@ -116,6 +116,11 @@ export function useStickToBottom(scrollEl: HTMLElement | null, live: boolean): S
       inputFrame = requestAnimationFrame(() => {
         inputFrame = null;
         follow.endInputFrame();
+        // A staged claim defers pins (a wheel tick's scroll is animated and a
+        // pin mid-flight would cancel it). If the claim was never confirmed —
+        // nested-scroller input the list did not consume — it is gone now, so
+        // re-judge: a pin deferred by it fires one frame late, not never.
+        onResize();
       });
     };
     const onWheel = (e: WheelEvent) => {
