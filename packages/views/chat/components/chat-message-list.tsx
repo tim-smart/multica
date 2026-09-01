@@ -198,7 +198,7 @@ export function ChatMessageList({
   }, []);
   // The bottom-stick runs only while the pending task can stream. Queued,
   // directory-waiting and deferred tasks have no live end, so a fold, image or
-  // composer resize must not move the viewport on the reader's behalf (TIM-65).
+  // composer resize must not move the viewport on the reader's behalf.
   const hasLiveTask =
     !!pendingTask && !PARKED_TASK_STATUSES.has(pendingTask.status ?? "");
   const { isFollowing, onContentHeightChanged } = useStickToBottom(
@@ -346,7 +346,7 @@ export function ChatMessageList({
         atBottomThreshold={FOLLOW_EDGE_THRESHOLD}
         // Follow appended rows only while Virtuoso says the reader is at the
         // live end. An in-flight smooth animation temporarily reports "not at
-        // bottom" on the next append and permanently drops the follow (#6697),
+        // bottom" on the next append and permanently drops the follow,
         // so live growth must use an immediate scroll. While a task can stream,
         // `isFollowing` narrows this further: the reader may have
         // scrolled away by input the 120px `atBottom` band forgives (see
