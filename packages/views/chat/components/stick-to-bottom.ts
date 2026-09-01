@@ -60,21 +60,36 @@ export interface StickToBottom {
 }
 
 /**
- * Keeps `scrollEl` pinned to the bottom while the reader follows the live
- * end. Viewport resizes (the composer) are observed here; content resizes
- * (streaming) must be reported through `onContentHeightChanged`, because a
- * ResizeObserver on the container never sees its scroll extent.
+ * Keeps `scrollEl` pinned to the bottom while a task streams and the reader
+ * follows the live end. Viewport resizes (the composer) are observed here;
+ * content resizes (streaming) must be reported through
+ * `onContentHeightChanged`, because a ResizeObserver on the container never
+ * sees its scroll extent.
+ *
+ * `live` is whether the pending task can currently stream. Idle and parked
+ * chats have no live end to follow, so while `live` is false nothing here
+ * moves the viewport: expanding a fold, loading an image or resizing the
+ * composer must not yank the reader to the bottom.
  */
-export function useStickToBottom(scrollEl: HTMLElement | null): StickToBottom {
+export function useStickToBottom(scrollEl: HTMLElement | null, live: boolean): StickToBottom {
   const followRef = useRef<LiveEndFollow | null>(null);
   if (followRef.current === null) {
     followRef.current = createLiveEndFollow();
-    // Unlike the transcript, the chat list is always live. Activated at
-    // creation, not in an effect: `followOutput` reads the latch on the
-    // very first render.
-    followRef.current.setActive(true);
+    // Activated synchronously, not only in the effect below: `followOutput`
+    // reads the latch on the very first render.
+    followRef.current.setActive(live);
   }
   const follow = followRef.current;
+
+  useEffect(() => {
+    follow.setActive(live);
+    if (!live) return;
+    // A task just started (or the list mounted mid-task): judge the follow
+    // from where the reader is NOW, not from latch state the previous task
+    // left behind. A reader up in history when a task starts stays there.
+    follow.reset();
+    if (scrollEl && !isAtLiveEnd(scrollEl)) follow.disengage();
+  }, [follow, live, scrollEl]);
 
   const pin = useCallback(() => {
     if (!scrollEl) return;
@@ -100,7 +115,13 @@ export function useStickToBottom(scrollEl: HTMLElement | null): StickToBottom {
       if (inputFrame !== null) cancelAnimationFrame(inputFrame);
       inputFrame = requestAnimationFrame(() => {
         inputFrame = null;
-        follow.endInputFrame();
+        // A staged claim defers pins (a wheel tick's scroll is animated and a
+        // pin mid-flight would cancel it). If the claim was never confirmed —
+        // nested-scroller input the list did not consume — it is gone now, so
+        // re-judge only if it deferred a pin. The pin then fires one frame
+        // late; an unconditional re-judge would instead snap back
+        // sub-threshold reader scrolls when nothing requested a pin.
+        if (follow.endInputFrame()) onResize();
       });
     };
     const onWheel = (e: WheelEvent) => {
