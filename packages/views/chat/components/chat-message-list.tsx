@@ -191,7 +191,13 @@ export function ChatMessageList({
     scrollRef.current = node;
     setScrollContainerEl(node);
   }, []);
-  const { isFollowing, onContentHeightChanged } = useStickToBottom(scrollContainerEl);
+  // The bottom-stick runs only while a task is in flight: an idle chat has no
+  // live end, so nothing may move the viewport on the reader's behalf (TIM-65).
+  const hasPendingTask = !!pendingTask;
+  const { isFollowing, onContentHeightChanged } = useStickToBottom(
+    scrollContainerEl,
+    hasPendingTask,
+  );
   // Soft edge fade hinting more content above/below. Kept small so it barely
   // grazes full-bleed previews (image / HTML) at the edges.
   const fadeStyle = useScrollFade(scrollRef, 16);
@@ -331,14 +337,21 @@ export function ChatMessageList({
         initialTopMostItemIndex={{ index: "LAST", align: "end" }}
         increaseViewportBy={{ top: 400, bottom: 600 }}
         atBottomThreshold={FOLLOW_EDGE_THRESHOLD}
-        // Follow rapid streamed output only while Virtuoso says the reader is
-        // at the live end. An in-flight smooth animation temporarily reports
-        // "not at bottom" on the next append and permanently drops the follow
-        // (#6697), so live growth must use an immediate scroll. `isFollowing`
-        // narrows this further: the reader may have scrolled away by input the
-        // 120px `atBottom` band forgives (see stick-to-bottom.ts).
+        // Follow appended rows only while Virtuoso says the reader is at the
+        // live end. An in-flight smooth animation temporarily reports "not at
+        // bottom" on the next append and permanently drops the follow (#6697),
+        // so live growth must use an immediate scroll. While a task is in
+        // flight, `isFollowing` narrows this further: the reader may have
+        // scrolled away by input the 120px `atBottom` band forgives (see
+        // stick-to-bottom.ts). While idle the latch is off and plain
+        // `atBottom` decides — a message arriving from another device still
+        // scrolls a reader who is at the bottom.
         followOutput={(atBottom) =>
-          !isFetchingOlderMessages && atBottom && isFollowing() ? "auto" : false
+          !isFetchingOlderMessages &&
+          atBottom &&
+          (hasPendingTask ? isFollowing() : true)
+            ? "auto"
+            : false
         }
         // `followOutput` never fires for a single row growing mid-stream, so
         // content resizes route to the bottom-stick through Virtuoso's own

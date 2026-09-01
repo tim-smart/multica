@@ -60,21 +60,36 @@ export interface StickToBottom {
 }
 
 /**
- * Keeps `scrollEl` pinned to the bottom while the reader follows the live
- * end. Viewport resizes (the composer) are observed here; content resizes
- * (streaming) must be reported through `onContentHeightChanged`, because a
- * ResizeObserver on the container never sees its scroll extent.
+ * Keeps `scrollEl` pinned to the bottom while a task streams and the reader
+ * follows the live end. Viewport resizes (the composer) are observed here;
+ * content resizes (streaming) must be reported through
+ * `onContentHeightChanged`, because a ResizeObserver on the container never
+ * sees its scroll extent.
+ *
+ * `live` is whether a task is in flight. An idle chat has no live end to
+ * follow, so while `live` is false nothing here moves the viewport: expanding
+ * a fold, a late-loading image or a composer resize must not yank an idle
+ * reader to the bottom (TIM-65).
  */
-export function useStickToBottom(scrollEl: HTMLElement | null): StickToBottom {
+export function useStickToBottom(scrollEl: HTMLElement | null, live: boolean): StickToBottom {
   const followRef = useRef<LiveEndFollow | null>(null);
   if (followRef.current === null) {
     followRef.current = createLiveEndFollow();
-    // Unlike the transcript, the chat list is always live. Activated at
-    // creation, not in an effect: `followOutput` reads the latch on the
-    // very first render.
-    followRef.current.setActive(true);
+    // Activated synchronously, not only in the effect below: `followOutput`
+    // reads the latch on the very first render.
+    followRef.current.setActive(live);
   }
   const follow = followRef.current;
+
+  useEffect(() => {
+    follow.setActive(live);
+    if (!live) return;
+    // A task just started (or the list mounted mid-task): judge the follow
+    // from where the reader is NOW, not from latch state the previous task
+    // left behind. A reader up in history when a task starts stays there.
+    follow.reset();
+    if (scrollEl && !isAtLiveEnd(scrollEl)) follow.disengage();
+  }, [follow, live, scrollEl]);
 
   const pin = useCallback(() => {
     if (!scrollEl) return;
