@@ -652,6 +652,35 @@ describe("ChatMessageList auto-scroll", () => {
     expect(scroll.distanceFromBottom()).toBe(0);
   });
 
+  // A deferral with no input frame left to consume it (growth deferred by
+  // carry residue after the gesture's rAF already fired) must be settled by
+  // the pin that eventually resolves it — not inherited by the next gesture's
+  // frame boundary, which would snap back a scroll that gesture never earned
+  // (TIM-65 review round 2).
+  it("does not inherit a stranded deferral into a later gesture's frame", () => {
+    const { scroll, streamChunk } = renderChat();
+
+    scroll.wheelInput(100);
+    scroll.browserScrollsListUp(40); // browser under-delivers: carry residue
+    renderFrame(); // this gesture's boundary: nothing deferred yet
+
+    streamChunk(1);
+    scroll.grow(180); // deferred by the residue
+
+    gestureSettles();
+    streamChunk(2);
+    scroll.grow(180); // settle window over: pins normally, settling the flag
+    expect(scroll.distanceFromBottom()).toBe(0);
+
+    gestureSettles();
+    scroll.readerScrollsUp(60); // brand new, fully confirmed, sub-threshold
+    expect(scroll.distanceFromBottom()).toBe(60);
+
+    renderFrame(); // nothing deferred this frame: nothing to re-judge
+
+    expect(scroll.distanceFromBottom()).toBe(60);
+  });
+
   it("keeps following after a flick on a conversation too short to scroll", () => {
     const { scroll, streamChunk } = renderChat({ contentHeight: 400 });
 

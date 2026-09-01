@@ -309,6 +309,9 @@ describe("createLiveEndFollow", () => {
     expect(follow.onResize(220)).toBe(false); // still deferred
     tick(250);
     expect(follow.onResize(400)).toBe(true); // settle window over: pin resumes
+    // The resolved pin settled the deferral: a later gesture's frame boundary
+    // must not inherit it and re-judge a pin that gesture never earned.
+    expect(follow.endInputFrame()).toBe(false);
   });
 
   it("pins a system shift after the surface left input unconsumed", () => {

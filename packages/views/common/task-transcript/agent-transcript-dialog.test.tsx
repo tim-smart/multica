@@ -1001,6 +1001,12 @@ describe("AgentTranscriptDialog — live-end follow wiring", () => {
         state.scrollTop += px;
         scrollEvent();
       },
+      /** Wheel input alone; the browser animates the scroll over later frames. */
+      wheelInputDown(px: number) {
+        act(() => {
+          el.dispatchEvent(new WheelEvent("wheel", { deltaY: px }));
+        });
+      },
       /** Wheel input a nested scroller consumed: no scroll event follows. */
       wheelWithoutScroll(px: number) {
         const nested = document.createElement("pre");
@@ -1013,6 +1019,13 @@ describe("AgentTranscriptDialog — live-end follow wiring", () => {
       systemShiftDown(px: number) {
         state.scrollTop += px;
         scrollEvent();
+      },
+      /**
+       * A scrollTop write whose scroll event has not landed yet — Virtuoso's
+       * prepend compensation writes directly; the event fires a task later.
+       */
+      silentShiftDown(px: number) {
+        state.scrollTop += px;
       },
     };
   }
@@ -1049,6 +1062,27 @@ describe("AgentTranscriptDialog — live-end follow wiring", () => {
     expect(scroll.scrollTop).toBe(110);
 
     renderFrame(); // claim discarded: the deferred pin fires
+
+    expect(scroll.scrollTop).toBe(0);
+  });
+
+  // Locks the re-judge to onResize. Re-judging through onScroll would read
+  // the distance moved since the last scroll event as continued reader
+  // motion, so a prepend compensation writing scrollTop in that gap would be
+  // credited against the wheel tick's carry and release the follow on pure
+  // system displacement (TIM-65 review round 2).
+  it("does not credit a silent prepend write against the tick at the re-judge", () => {
+    const scroll = liveScroller();
+
+    scroll.wheelInputDown(150);
+    scroll.systemShiftDown(110); // the tick's animation delivers 110 so far
+    scroll.systemShiftDown(300); // big prepend mid-animation: pin deferred
+    scroll.silentShiftDown(20); // compensation write, its scroll event pending
+
+    renderFrame(); // re-judge must not attribute the 20px to the reader
+
+    gestureSettles();
+    scroll.systemShiftDown(50); // still following: this pin must fire
 
     expect(scroll.scrollTop).toBe(0);
   });

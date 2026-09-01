@@ -159,6 +159,11 @@ export function createLiveEndFollow(now: () => number = () => Date.now()): LiveE
       pinDeferred = true;
       return false;
     }
+    // Judged for real: whatever was deferred is settled, so a later frame
+    // boundary must not inherit it — a deferral stranded by a gesture with
+    // no input frame left would otherwise be consumed by the next unrelated
+    // gesture and snap it back.
+    pinDeferred = false;
     return wanted;
   };
 
