@@ -27,18 +27,22 @@ vi.mock("@multica/ui/lib/clipboard", () => ({
 }));
 
 // Real react-virtuoso renders no data rows under jsdom's zero-height viewport,
-// so stub it with a flat render to make rows visible to these tests.
+// so stub it with a flat render to make rows visible to these tests. The
+// scroller element is forwarded through `scrollerRef` (identity-stable, so
+// React attaches it once) for the live-end follow wiring suite below.
 vi.mock("react-virtuoso", () => ({
   Virtuoso: ({
     data,
     itemContent,
     computeItemKey,
+    scrollerRef,
   }: {
     data: TimelineItem[];
     itemContent: (i: number, item: TimelineItem) => ReactNode;
     computeItemKey: (i: number, item: TimelineItem) => number;
+    scrollerRef?: (el: HTMLElement | null) => void;
   }) => (
-    <div>
+    <div data-testid="transcript-scroller" ref={scrollerRef}>
       {data.map((item, i) => (
         <div key={computeItemKey(i, item)}>{itemContent(i, item)}</div>
       ))}
@@ -919,5 +923,133 @@ describe("AgentTranscriptDialog — reason vs raw diagnostics", () => {
 
     expect(screen.queryByText("Technical details")).not.toBeInTheDocument();
     expect(screen.queryByText("Reason")).not.toBeInTheDocument();
+  });
+});
+
+// The follow wiring itself: input staging, the scroll-event pin, and the
+// frame-boundary re-judge. The latch decision table is canonical in
+// transcript-follow.test.ts; these tests drive the dialog's DOM wiring the
+// way the chat list's suite drives chat-message-list. This surface is
+// newest-first, so the live end is at the TOP: away from it is scrolling
+// DOWN (positive deltaY), and the pin writes scrollTop = 0.
+describe("AgentTranscriptDialog — live-end follow wiring", () => {
+  let animationFrames: Map<number, FrameRequestCallback>;
+  let nextFrameId = 1;
+  let now = 0;
+
+  beforeEach(() => {
+    animationFrames = new Map();
+    nextFrameId = 1;
+    now = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      const id = nextFrameId++;
+      animationFrames.set(id, cb);
+      return id;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+      animationFrames.delete(id);
+    });
+    // The latch only engages while live and newest-first.
+    useTranscriptViewStore.setState({ sortDirection: "newest_first" });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.mocked(Date.now).mockRestore();
+  });
+
+  function renderFrame() {
+    const callbacks = [...animationFrames.values()];
+    animationFrames.clear();
+    now += 16;
+    for (const cb of callbacks) cb(now);
+  }
+
+  function gestureSettles() {
+    now += 301;
+  }
+
+  function liveScroller() {
+    renderDialog(items, { task: liveTask, isLive: true });
+    const el = screen.getByTestId("transcript-scroller");
+    const state = { scrollTop: 0, contentHeight: 2000, viewportHeight: 600 };
+    Object.defineProperties(el, {
+      scrollHeight: { configurable: true, get: () => state.contentHeight },
+      clientHeight: { configurable: true, get: () => state.viewportHeight },
+      scrollTop: {
+        configurable: true,
+        get: () => state.scrollTop,
+        set: (value: number) => {
+          state.scrollTop = value;
+        },
+      },
+    });
+    const scrollEvent = () =>
+      act(() => {
+        el.dispatchEvent(new Event("scroll"));
+      });
+    return {
+      get scrollTop() {
+        return state.scrollTop;
+      },
+      /** Reader wheel input away from the live end, and the scroll it causes. */
+      readerScrollsDown(px: number) {
+        act(() => {
+          el.dispatchEvent(new WheelEvent("wheel", { deltaY: px }));
+        });
+        state.scrollTop += px;
+        scrollEvent();
+      },
+      /** Wheel input a nested scroller consumed: no scroll event follows. */
+      wheelWithoutScroll(px: number) {
+        const nested = document.createElement("pre");
+        el.appendChild(nested);
+        act(() => {
+          nested.dispatchEvent(new WheelEvent("wheel", { deltaY: px, bubbles: true }));
+        });
+      },
+      /** The system moves the viewport (prepend compensation); no input. */
+      systemShiftDown(px: number) {
+        state.scrollTop += px;
+        scrollEvent();
+      },
+    };
+  }
+
+  it("pins a prepend shift straight back to the live end", () => {
+    const scroll = liveScroller();
+
+    scroll.systemShiftDown(400);
+
+    expect(scroll.scrollTop).toBe(0);
+  });
+
+  // Regression (TIM-65 review): an unconditional frame-boundary re-judge
+  // snapped back every confirmed sub-threshold reader scroll one frame later.
+  it("leaves a confirmed sub-threshold scroll alone at the frame boundary", () => {
+    const scroll = liveScroller();
+
+    scroll.readerScrollsDown(60);
+    expect(scroll.scrollTop).toBe(60);
+
+    renderFrame();
+
+    expect(scroll.scrollTop).toBe(60);
+  });
+
+  it("re-judges a pin deferred by unconsumed input at the frame boundary", () => {
+    const scroll = liveScroller();
+
+    scroll.readerScrollsDown(60); // parked inside the follow band
+    gestureSettles();
+    scroll.wheelWithoutScroll(-40); // toward-input a nested block consumed
+    scroll.systemShiftDown(50); // prepend shift mid-claim: deferred
+
+    expect(scroll.scrollTop).toBe(110);
+
+    renderFrame(); // claim discarded: the deferred pin fires
+
+    expect(scroll.scrollTop).toBe(0);
   });
 });

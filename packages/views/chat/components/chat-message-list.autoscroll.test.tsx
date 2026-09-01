@@ -623,6 +623,21 @@ describe("ChatMessageList auto-scroll", () => {
     expect(scroll.distanceFromBottom()).toBe(560);
   });
 
+  // The frame-boundary re-judge fires only for pins a gesture actually
+  // deferred. An unconditional re-judge snapped back every sub-threshold
+  // reader scroll (touchpad tick, arrow key) one frame later, with no growth
+  // anywhere (TIM-65 review).
+  it("leaves a confirmed sub-threshold scroll alone at the frame boundary", () => {
+    const { scroll } = renderChat();
+
+    scroll.readerScrollsUp(60);
+    expect(scroll.distanceFromBottom()).toBe(60);
+
+    renderFrame();
+
+    expect(scroll.distanceFromBottom()).toBe(60);
+  });
+
   it("pins growth deferred by unconsumed input once the claim frame ends", () => {
     const { scroll, streamChunk } = renderChat();
 
