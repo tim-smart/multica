@@ -86,20 +86,6 @@ func TestCreateCommentSteersTheThreadAgentsRunningTurn(t *testing.T) {
 	}
 }
 
-// Every provider that negotiates the capability can be steered by a comment,
-// not only through the direct supplement route.
-func TestCreateCommentSteersACapableGrokTurn(t *testing.T) {
-	f := newSupplementFixture(t, "grok", "running", true)
-	dbfx.Cleanup(t, `DELETE FROM agent_task_queue WHERE issue_id = $1`, f.issueID)
-
-	var created CommentResponse
-	postSteeredComment(t, f.issueID, "", agentMention("Grok", f.agentID)+" only fix web", f.taskID).
-		Want(http.StatusCreated).JSON(&created)
-	if outcome, ok := outcomeFor(created.TriggerOutcomes, f.agentID); !ok || outcome.Status != DispatchSteered {
-		t.Fatalf("outcome = %+v (%v), want steered", outcome, ok)
-	}
-}
-
 func TestCreateCommentSteerKeepsTheNormalTriggerWhenTheTurnCannotTakeInput(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

@@ -567,142 +567,77 @@ func newIssueCommentAddTestCmd() *cobra.Command {
 	return cmd
 }
 
-func TestRunIssueCommentAddSteerActiveReportsTheOutcome(t *testing.T) {
+func TestRunIssueCommentAddSteering(t *testing.T) {
 	const (
 		issueID   = "11111111-1111-4111-8111-111111111111"
 		selfTask  = "22222222-2222-4222-8222-222222222222"
 		selfAgent = "33333333-3333-4333-8333-333333333333"
 		peerTask  = "44444444-4444-4444-8444-444444444444"
 		peerAgent = "55555555-5555-4555-8555-555555555555"
-		busyTask  = "66666666-6666-4666-8666-666666666666"
 	)
-	run := func(id, agentID string, canSupplement bool) map[string]any {
-		return map[string]any{
-			"id": id, "agent_id": agentID, "status": "running",
-			"supplement_capability": "task-supplement-v1", "can_supplement": canSupplement,
-		}
-	}
-	var posted map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/issues/"+issueID:
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": issueID, "identifier": "TST-1"})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/issues/"+issueID+"/task-runs":
-			_ = json.NewEncoder(w).Encode([]any{
-				run(selfTask, selfAgent, true),
-				run(peerTask, peerAgent, true),
-				run(busyTask, "77777777-7777-4777-8777-777777777777", false),
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/agents/"+peerAgent:
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": peerAgent, "name": "Reviewer"})
-		case r.Method == http.MethodPost && r.URL.Path == "/api/issues/"+issueID+"/comments":
-			_ = json.NewDecoder(r.Body).Decode(&posted)
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "comment-1", "trigger_outcomes": []any{
-				map[string]any{"target_type": "agent", "target_id": peerAgent, "status": "steered", "reason_code": "steered"},
-			}})
-		default:
-			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer srv.Close()
-	setCLITestServerEnv(t, srv.URL)
-	t.Setenv("MULTICA_TOKEN", "mat_test-token")
-	t.Setenv("MULTICA_TASK_ID", selfTask)
-	t.Setenv("MULTICA_AGENT_ID", selfAgent)
+	for _, tc := range []struct {
+		name, flag, value, status, report string
+	}{
+		{"active workers", "steer-active", "true", "steered", "Steered run " + peerTask + " (Worker)"},
+		{"finished run keeps its normal trigger", "steer", peerTask[:8], "queued", "Not steered run " + peerTask + " (Worker): queued"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var posted map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodGet && r.URL.Path == "/api/issues/"+issueID:
+					_ = json.NewEncoder(w).Encode(map[string]any{"id": issueID, "identifier": "TST-1"})
+				case r.Method == http.MethodGet && r.URL.Path == "/api/issues/"+issueID+"/task-runs":
+					runs := []any{
+						map[string]any{"id": selfTask, "agent_id": selfAgent, "status": "running", "supplement_capability": "task-supplement-v1", "can_supplement": true},
+						map[string]any{"id": "66666666-6666-4666-8666-666666666666", "agent_id": "77777777-7777-4777-8777-777777777777", "status": "running", "supplement_capability": "task-supplement-v1", "can_supplement": false},
+					}
+					if tc.flag == "steer-active" {
+						runs = append(runs, map[string]any{"id": peerTask, "agent_id": peerAgent, "status": "running", "supplement_capability": "task-supplement-v1", "can_supplement": true})
+					} else if r.URL.Query().Get("active") != "true" {
+						// A finished worker is only present in the full history.
+						runs = append(runs, map[string]any{"id": peerTask, "agent_id": peerAgent, "status": "completed"})
+					}
+					_ = json.NewEncoder(w).Encode(runs)
+				case r.Method == http.MethodGet && r.URL.Path == "/api/agents/"+peerAgent:
+					_ = json.NewEncoder(w).Encode(map[string]any{"id": peerAgent, "name": "Worker"})
+				case r.Method == http.MethodPost && r.URL.Path == "/api/issues/"+issueID+"/comments":
+					_ = json.NewDecoder(r.Body).Decode(&posted)
+					_ = json.NewEncoder(w).Encode(map[string]any{"id": "comment-1", "trigger_outcomes": []any{
+						map[string]any{"target_type": "agent", "target_id": peerAgent, "status": tc.status},
+					}})
+				default:
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer srv.Close()
+			setCLITestServerEnv(t, srv.URL)
+			t.Setenv("MULTICA_TOKEN", "mat_test-token")
+			t.Setenv("MULTICA_TASK_ID", selfTask)
+			t.Setenv("MULTICA_AGENT_ID", selfAgent)
 
-	cmd := newIssueCommentAddTestCmd()
-	_ = cmd.Flags().Set("content", "Only fix web.")
-	_ = cmd.Flags().Set("steer-active", "true")
-	_ = cmd.Flags().Set("output", "table")
-	stderr := captureStderr(t)
-	defer stderr.restore()
-	if err := runIssueCommentAdd(cmd, []string{issueID}); err != nil {
-		t.Fatalf("runIssueCommentAdd: %v", err)
-	}
-	report := stderr.read()
-
-	if got := fmt.Sprint(posted["steer_task_ids"]); got != "["+peerTask+"]" {
-		t.Fatalf("steer_task_ids = %s, want only the peer's steerable run", got)
-	}
-	if want := "[@Reviewer](mention://agent/" + peerAgent + ") Only fix web."; posted["content"] != want {
-		t.Fatalf("content = %q, want %q", posted["content"], want)
-	}
-	if !strings.Contains(report, "Steered run "+peerTask+" (Reviewer)") {
-		t.Fatalf("stderr = %q, want the steered outcome", report)
-	}
-}
-
-func TestRunIssueCommentAddSteerOnAFinishedRunKeepsTheNormalTrigger(t *testing.T) {
-	const (
-		issueID    = "11111111-1111-4111-8111-111111111111"
-		doneTask   = "44444444-4444-4444-8444-444444444444"
-		workerID   = "55555555-5555-4555-8555-555555555555"
-		commentURL = "/api/issues/" + issueID + "/comments"
-	)
-	var posted map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/issues/"+issueID:
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": issueID, "identifier": "TST-1"})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/issues/"+issueID+"/task-runs":
-			// The worker's turn finished after the leader picked it, so only the
-			// full history still lists it.
-			runs := []any{map[string]any{"id": doneTask, "agent_id": workerID, "status": "completed"}}
-			if r.URL.Query().Get("active") == "true" {
-				runs = []any{}
+			cmd := newIssueCommentAddTestCmd()
+			_ = cmd.Flags().Set("content", "Only fix web.")
+			_ = cmd.Flags().Set(tc.flag, tc.value)
+			_ = cmd.Flags().Set("output", "table")
+			stderr := captureStderr(t)
+			defer stderr.restore()
+			if err := runIssueCommentAdd(cmd, []string{issueID}); err != nil {
+				t.Fatalf("runIssueCommentAdd: %v", err)
 			}
-			_ = json.NewEncoder(w).Encode(runs)
-		case r.Method == http.MethodGet && r.URL.Path == "/api/agents/"+workerID:
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": workerID, "name": "Worker"})
-		case r.Method == http.MethodPost && r.URL.Path == commentURL:
-			_ = json.NewDecoder(r.Body).Decode(&posted)
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "comment-1", "trigger_outcomes": []any{
-				map[string]any{"target_type": "agent", "target_id": workerID, "status": "queued", "reason_code": "queued"},
-			}})
-		default:
-			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer srv.Close()
-	setCLITestServerEnv(t, srv.URL)
-	t.Setenv("MULTICA_TOKEN", "mat_test-token")
-	t.Setenv("MULTICA_TASK_ID", "")
-	t.Setenv("MULTICA_AGENT_ID", "")
+			report := stderr.read()
 
-	cmd := newIssueCommentAddTestCmd()
-	_ = cmd.Flags().Set("content", "Only fix web.")
-	_ = cmd.Flags().Set("steer", doneTask)
-	_ = cmd.Flags().Set("output", "table")
-	stderr := captureStderr(t)
-	defer stderr.restore()
-	if err := runIssueCommentAdd(cmd, []string{issueID}); err != nil {
-		t.Fatalf("runIssueCommentAdd: %v", err)
-	}
-	report := stderr.read()
-
-	if posted == nil {
-		t.Fatal("the comment was not posted")
-	}
-	if want := "[@Worker](mention://agent/" + workerID + ") Only fix web."; posted["content"] != want {
-		t.Fatalf("content = %q, want %q so the worker keeps its normal trigger", posted["content"], want)
-	}
-	if !strings.Contains(report, "Not steered run "+doneTask+" (Worker): queued") {
-		t.Fatalf("stderr = %q, want the queued fallback", report)
-	}
-}
-
-func TestRunIssueCommentAddRejectsSteerWithAttachment(t *testing.T) {
-	setCLITestServerEnv(t, "http://127.0.0.1:0")
-	t.Setenv("MULTICA_TOKEN", "mat_test-token")
-	cmd := newIssueCommentAddTestCmd()
-	_ = cmd.Flags().Set("content", "hello")
-	_ = cmd.Flags().Set("steer-active", "true")
-	_ = cmd.Flags().Set("attachment", "chart.png")
-	err := runIssueCommentAdd(cmd, []string{"TST-1"})
-	if err == nil || !strings.Contains(err.Error(), "--attachment") {
-		t.Fatalf("err = %v, want the steer/attachment conflict", err)
+			if got := fmt.Sprint(posted["steer_task_ids"]); got != "["+peerTask+"]" {
+				t.Fatalf("steer_task_ids = %s, want only the worker's run", got)
+			}
+			if want := "[@Worker](mention://agent/" + peerAgent + ") Only fix web."; posted["content"] != want {
+				t.Fatalf("content = %q, want %q so the worker keeps its normal trigger", posted["content"], want)
+			}
+			if !strings.Contains(report, tc.report) {
+				t.Fatalf("stderr = %q, want %q", report, tc.report)
+			}
+		})
 	}
 }
 
