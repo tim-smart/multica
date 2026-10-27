@@ -117,7 +117,7 @@ multica issue run-messages <task-id> --issue MUL-123
 multica issue cancel-task <task-id> --issue MUL-123
 ```
 
-Add a comment to a run that is still working, instead of queueing a follow-up run (Claude Code and Codex runs only):
+Add a comment to a run that is still working, instead of queueing a follow-up run (only runs that accept additional messages):
 
 ```bash
 multica issue comment add MUL-123 --content-file note.md --steer <task-id>

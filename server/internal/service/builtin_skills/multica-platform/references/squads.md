@@ -234,7 +234,8 @@ Only a squad leader can steer, and only these runs:
 - not a worker that also leads a squad containing this leader (agents that
   lead each other cannot steer each other);
 - only workers its mention could start (the same invoke gate as a mention);
-- only Claude Code and Codex runs that are running now;
+- only runs that are running now and accept additional messages
+  (`can_supplement: true` in `multica issue runs <issue-id> --active --output json`);
 - only comments without attachments. The CLI refuses `--steer` with
   `--attachment`.
 

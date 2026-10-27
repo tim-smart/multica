@@ -168,9 +168,11 @@ const squadOperatingProtocolHardRules = `Hard rules:
   run ends. To correct it mid-run (wrong direction, a missing fact, a
   narrower scope), steer that run instead: add the comment with
   ` + "`" + `--steer <run-id>` + "`" + ` (run ids from ` + "`" + `multica issue runs <issue-id> --active` + "`" + `), or
-  ` + "`" + `--steer-active` + "`" + ` for every worker of yours running on the issue. Only Claude
-  Code and Codex runs accept it, and the command reports per run whether it
-  was steered. New work is still a normal delegation.`
+  ` + "`" + `--steer-active` + "`" + ` for every worker of yours running on the issue. Only a run
+  that accepts additional messages (` + "`" + `can_supplement: true` + "`" + ` in
+  ` + "`" + `multica issue runs <issue-id> --active --output json` + "`" + `) can be steered, and
+  the command reports per run whether it was. New work is still a normal
+  delegation.`
 
 // squadOperatingProtocolFor assembles the protocol, selecting the parent-status
 // responsibility that matches this leader's actual authority over the issue.

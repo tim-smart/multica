@@ -117,7 +117,7 @@ multica issue run-messages <task-id> --issue MUL-123
 multica issue cancel-task <task-id> --issue MUL-123
 ```
 
-把评论加入仍在进行中的运行，而不是排队一个后续运行（仅限 Claude Code 和 Codex 运行）：
+把评论插话到仍在进行中的运行，而不是排队一个后续运行（仅限支持插话的运行）：
 
 ```bash
 multica issue comment add MUL-123 --content-file note.md --steer <task-id>

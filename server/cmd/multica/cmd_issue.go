@@ -333,8 +333,9 @@ var issueCommentAddCmd = &cobra.Command{
 		"that is in progress instead, pass --steer <run-id> (repeatable; from `multica issue runs <issue-id> --active`) " +
 		"or --steer-active for every running run on the issue you may steer. An agent may steer only the runs of " +
 		"workers in a squad it leads, never its own; a member may steer any agent they can invoke. The steered " +
-		"agents are mentioned in the comment. Only Claude Code and Codex runs accept these messages. A run that " +
-		"cannot take the message gets the normal trigger; the command reports per run whether it was steered or " +
+		"agents are mentioned in the comment. Only a run that accepts additional messages can be steered " +
+		"(`can_supplement: true` in `multica issue runs <issue-id> --active --output json`). A run that cannot " +
+		"take the message gets the normal trigger; the command reports per run whether it was steered or " +
 		"queued, coalesced, deferred or blocked. Steering cannot carry attachments.",
 	Args: exactArgs(1),
 	RunE: runIssueCommentAdd,
