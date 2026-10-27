@@ -445,10 +445,8 @@ func (h *Handler) ClaimTaskSupplement(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Capabilities []string `json:"capabilities"`
 	}
-	if r.ContentLength != 0 {
-		// Older daemons send {}; a malformed body only loses the capability.
-		_ = json.NewDecoder(r.Body).Decode(&req)
-	}
+	// Older daemons send {}; a malformed body only loses the capability.
+	_ = json.NewDecoder(r.Body).Decode(&req)
 	rendersAuthorType := slices.Contains(req.Capabilities, protocol.DaemonCapabilityTaskSupplementAuthorV1)
 	row, err := h.Queries.ClaimNextTaskSupplement(r.Context(), parseUUID(taskID))
 	if errors.Is(err, pgx.ErrNoRows) {

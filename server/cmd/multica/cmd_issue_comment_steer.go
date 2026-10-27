@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/multica-ai/multica/server/internal/cli"
-	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 // steerTarget is one running turn a comment is added to.
@@ -24,8 +23,8 @@ type steerTarget struct {
 // that ended since the caller looked is still sent, so the server gives its
 // agent the normal trigger instead of the comment being lost. The caller's
 // own runs are never targets: the server refuses a self-steer. --steer-active
-// picks only running runs with can_supplement, which for an agent caller is
-// true only on runs of workers in a squad it leads.
+// picks the runs the server marks can_supplement, which it does only for a
+// running turn that takes additional messages and that this caller may steer.
 func resolveSteerTargets(ctx context.Context, client *cli.APIClient, issueID string, inputs []string, active bool) ([]steerTarget, error) {
 	if len(inputs) == 0 && !active {
 		return nil, nil
@@ -39,24 +38,29 @@ func resolveSteerTargets(ctx context.Context, client *cli.APIClient, issueID str
 		return (selfTask != "" && strVal(run, "id") == selfTask) || (selfAgent != "" && strVal(run, "agent_id") == selfAgent)
 	}
 	byID := make(map[string]map[string]any, len(runs))
+	candidates := make([]idCandidate, 0, len(runs))
 	for _, run := range runs {
-		byID[strVal(run, "id")] = run
+		id := strVal(run, "id")
+		byID[id] = run
+		candidates = append(candidates, idCandidate{ID: id, Display: id})
 	}
+	// Short prefixes resolve against the runs already fetched: the same
+	// candidates `issue cancel-task` would load for this issue.
+	fromIssue := func(context.Context, *cli.APIClient) ([]idCandidate, error) { return candidates, nil }
 
 	var targets []steerTarget
 	seen := make(map[string]bool)
 	add := func(run map[string]any) {
 		id := strVal(run, "id")
-		if seen[id] {
-			return
+		if !seen[id] {
+			seen[id] = true
+			targets = append(targets, steerTarget{TaskID: id, AgentID: strVal(run, "agent_id")})
 		}
-		seen[id] = true
-		targets = append(targets, steerTarget{TaskID: id, AgentID: strVal(run, "agent_id")})
 	}
 	for _, input := range inputs {
-		ref, err := resolveTaskRunID(ctx, client, issueID, input)
+		ref, err := resolveIDByPrefix(ctx, client, "task run", input, fromIssue)
 		if err != nil {
-			return nil, fmt.Errorf("resolve --steer %s: %w", input, err)
+			return nil, fmt.Errorf("--steer %s: %w", input, err)
 		}
 		run, ok := byID[ref.ID]
 		if !ok {
@@ -69,11 +73,9 @@ func resolveSteerTargets(ctx context.Context, client *cli.APIClient, issueID str
 	}
 	if active {
 		for _, run := range runs {
-			if strVal(run, "status") != "running" || strVal(run, "supplement_capability") != protocol.DaemonCapabilityTaskSupplementV1 ||
-				run["can_supplement"] != true || isSelf(run) {
-				continue
+			if run["can_supplement"] == true && !isSelf(run) {
+				add(run)
 			}
-			add(run)
 		}
 		if len(targets) == 0 {
 			fmt.Fprintln(os.Stderr, "No running run on this issue that you may steer; posting a normal comment.")
@@ -121,21 +123,20 @@ func withSteerMentions(content string, targets []steerTarget) string {
 // message or the agent got the normal trigger instead.
 func reportSteerOutcomes(w io.Writer, targets []steerTarget, result map[string]any) {
 	outcomes, _ := result["trigger_outcomes"].([]any)
-	for _, target := range targets {
-		status, reason := "not_triggered", ""
-		for _, raw := range outcomes {
-			outcome, ok := raw.(map[string]any)
-			if ok && strVal(outcome, "target_type") == "agent" && strVal(outcome, "target_id") == target.AgentID {
-				status, reason = strVal(outcome, "status"), strVal(outcome, "reason_code")
-				break
-			}
+	byAgent := make(map[string]map[string]any, len(outcomes))
+	for _, raw := range outcomes {
+		if outcome, ok := raw.(map[string]any); ok && strVal(outcome, "target_type") == "agent" {
+			byAgent[strVal(outcome, "target_id")] = outcome
 		}
-		switch status {
+	}
+	for _, target := range targets {
+		outcome := byAgent[target.AgentID]
+		switch status := strVal(outcome, "status"); status {
 		case "steered":
 			fmt.Fprintf(w, "Steered run %s (%s): the running turn receives this comment.\n", target.TaskID, target.AgentName)
 		case "blocked":
-			fmt.Fprintf(w, "Not steered run %s (%s): blocked (%s); the agent was not triggered.\n", target.TaskID, target.AgentName, reason)
-		case "not_triggered":
+			fmt.Fprintf(w, "Not steered run %s (%s): blocked (%s); the agent was not triggered.\n", target.TaskID, target.AgentName, strVal(outcome, "reason_code"))
+		case "":
 			fmt.Fprintf(w, "Not steered run %s (%s): the comment did not trigger this agent.\n", target.TaskID, target.AgentName)
 		default:
 			fmt.Fprintf(w, "Not steered run %s (%s): %s; the agent handles this comment in a follow-up run.\n", target.TaskID, target.AgentName, status)
