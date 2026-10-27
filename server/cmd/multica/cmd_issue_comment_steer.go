@@ -20,17 +20,19 @@ type steerTarget struct {
 }
 
 // resolveSteerTargets turns --steer run IDs and --steer-active into the runs
-// the comment is sent to. Every target must be an in-flight run of this issue,
-// and the caller's own runs are never targets: the server refuses a self-steer.
-// --steer-active relies on the server's can_supplement, which for an agent
-// caller is true only on runs of workers in a squad it leads.
+// the comment is sent to. An explicit target may be any run of this issue: one
+// that ended since the caller looked is still sent, so the server gives its
+// agent the normal trigger instead of the comment being lost. The caller's
+// own runs are never targets: the server refuses a self-steer. --steer-active
+// picks only running runs with can_supplement, which for an agent caller is
+// true only on runs of workers in a squad it leads.
 func resolveSteerTargets(ctx context.Context, client *cli.APIClient, issueID string, inputs []string, active bool) ([]steerTarget, error) {
 	if len(inputs) == 0 && !active {
 		return nil, nil
 	}
 	var runs []map[string]any
-	if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(issueID)+"/task-runs?active=true", &runs); err != nil {
-		return nil, fmt.Errorf("list active runs: %w", err)
+	if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(issueID)+"/task-runs", &runs); err != nil {
+		return nil, fmt.Errorf("list runs: %w", err)
 	}
 	selfTask, selfAgent := os.Getenv("MULTICA_TASK_ID"), os.Getenv("MULTICA_AGENT_ID")
 	isSelf := func(run map[string]any) bool {
@@ -58,7 +60,7 @@ func resolveSteerTargets(ctx context.Context, client *cli.APIClient, issueID str
 		}
 		run, ok := byID[ref.ID]
 		if !ok {
-			return nil, fmt.Errorf("--steer %s: run is not in flight on this issue; post a normal comment instead", input)
+			return nil, fmt.Errorf("--steer %s: not a run of this issue", input)
 		}
 		if isSelf(run) {
 			return nil, fmt.Errorf("--steer %s: an agent cannot steer its own run", input)

@@ -633,6 +633,66 @@ func TestRunIssueCommentAddSteerActiveReportsTheOutcome(t *testing.T) {
 	}
 }
 
+func TestRunIssueCommentAddSteerOnAFinishedRunKeepsTheNormalTrigger(t *testing.T) {
+	const (
+		issueID    = "11111111-1111-4111-8111-111111111111"
+		doneTask   = "44444444-4444-4444-8444-444444444444"
+		workerID   = "55555555-5555-4555-8555-555555555555"
+		commentURL = "/api/issues/" + issueID + "/comments"
+	)
+	var posted map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/issues/"+issueID:
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": issueID, "identifier": "TST-1"})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/issues/"+issueID+"/task-runs":
+			// The worker's turn finished after the leader picked it, so only the
+			// full history still lists it.
+			runs := []any{map[string]any{"id": doneTask, "agent_id": workerID, "status": "completed"}}
+			if r.URL.Query().Get("active") == "true" {
+				runs = []any{}
+			}
+			_ = json.NewEncoder(w).Encode(runs)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/agents/"+workerID:
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": workerID, "name": "Worker"})
+		case r.Method == http.MethodPost && r.URL.Path == commentURL:
+			_ = json.NewDecoder(r.Body).Decode(&posted)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "comment-1", "trigger_outcomes": []any{
+				map[string]any{"target_type": "agent", "target_id": workerID, "status": "queued", "reason_code": "queued"},
+			}})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	setCLITestServerEnv(t, srv.URL)
+	t.Setenv("MULTICA_TOKEN", "mat_test-token")
+	t.Setenv("MULTICA_TASK_ID", "")
+	t.Setenv("MULTICA_AGENT_ID", "")
+
+	cmd := newIssueCommentAddTestCmd()
+	_ = cmd.Flags().Set("content", "Only fix web.")
+	_ = cmd.Flags().Set("steer", doneTask)
+	_ = cmd.Flags().Set("output", "table")
+	stderr := captureStderr(t)
+	defer stderr.restore()
+	if err := runIssueCommentAdd(cmd, []string{issueID}); err != nil {
+		t.Fatalf("runIssueCommentAdd: %v", err)
+	}
+	report := stderr.read()
+
+	if posted == nil {
+		t.Fatal("the comment was not posted")
+	}
+	if want := "[@Worker](mention://agent/" + workerID + ") Only fix web."; posted["content"] != want {
+		t.Fatalf("content = %q, want %q so the worker keeps its normal trigger", posted["content"], want)
+	}
+	if !strings.Contains(report, "Not steered run "+doneTask+" (Worker): queued") {
+		t.Fatalf("stderr = %q, want the queued fallback", report)
+	}
+}
+
 func TestRunIssueCommentAddRejectsSteerWithAttachment(t *testing.T) {
 	setCLITestServerEnv(t, "http://127.0.0.1:0")
 	t.Setenv("MULTICA_TOKEN", "mat_test-token")
