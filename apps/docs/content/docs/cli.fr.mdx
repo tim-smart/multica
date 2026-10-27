@@ -117,6 +117,12 @@ multica issue run-messages <task-id> --issue MUL-123
 multica issue cancel-task <task-id> --issue MUL-123
 ```
 
+Ajouter un commentaire à une exécution encore en cours, au lieu de mettre une exécution de suivi en file d'attente (uniquement les exécutions qui acceptent des messages supplémentaires) :
+
+```bash
+multica issue comment add MUL-123 --content-file note.md --steer <task-id>
+```
+
 ## Agents et skills
 
 ```bash
