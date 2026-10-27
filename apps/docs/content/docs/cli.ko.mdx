@@ -117,6 +117,12 @@ multica issue run-messages <task-id> --issue MUL-123
 multica issue cancel-task <task-id> --issue MUL-123
 ```
 
+후속 실행을 대기열에 넣는 대신 아직 진행 중인 실행에 댓글을 추가합니다(Claude Code 및 Codex 실행만 해당).
+
+```bash
+multica issue comment add MUL-123 --content-file note.md --steer <task-id>
+```
+
 ## 에이전트와 스킬
 
 ```bash

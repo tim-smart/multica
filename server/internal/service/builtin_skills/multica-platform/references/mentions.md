@@ -165,6 +165,41 @@ not injected into an already running prompt. Different threads queue independent
   to mention it. (The squad assignment/promote path has its own gate; the
   child-done wake is ungated.)
 
+## Steering a run that is in progress
+
+A mention of a busy agent waits for its current run to end (`deferred`). To put
+your message into that run instead, steer it:
+
+    multica issue comment add <issue-id> --parent <your trigger comment> \
+      --content-file ./note.md --steer <run-id>
+
+`--steer` takes a run id from `multica issue runs <issue-id> --active`
+(repeatable; short prefixes resolve on this issue). `--steer-active` steers
+every other running run on the issue that reports `can_supplement: true`. The
+CLI adds a mention of each steered agent to the comment, so steering reaches
+exactly the agents a mention from you could start, judged by the same invoke
+gate.
+
+Steer when the agent is mid-task and your input changes what it is doing now: a
+correction, a missing fact, a narrower scope. Use a plain comment for a new
+request, or anything that can wait for the run to finish.
+
+The CLI prints one line per run on stderr: `Steered run …` means the running
+turn receives the comment. Anything else (`queued`, `coalesced`, `deferred`,
+`blocked`) means the run did not take it and the comment went through the
+normal mention path; do not re-post it. A run does not take your message when:
+
+- it is your own run, or your agent's;
+- it has ended or is not running yet;
+- it is not a Claude Code or Codex run;
+- it already took 5 messages from agents (the loop guard; human messages do not
+  count);
+- the comment has attachments. The CLI refuses `--steer` with `--attachment`.
+
+The running agent sees your message labelled as coming from an agent, not a
+human, without a human's authority. It cannot cancel or replace that agent's
+objective.
+
 ## Who the invoke gate judges
 
 A chain that crosses issues keeps its human. The agent-to-agent gate judges the
