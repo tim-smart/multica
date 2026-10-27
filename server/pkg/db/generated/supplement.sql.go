@@ -254,21 +254,6 @@ func (q *Queries) CommentHasTaskSupplement(ctx context.Context, arg CommentHasTa
 	return bound, err
 }
 
-const countAgentTaskSupplements = `-- name: CountAgentTaskSupplements :one
-SELECT count(*)::int FROM task_supplement s
-JOIN comment c ON c.id = s.comment_id
-WHERE s.task_id = $1 AND c.author_type = 'agent'
-`
-
-// Every agent-authored message ever bound to this run, whatever its delivery
-// status: the loop guard caps how often agents can reach one turn.
-func (q *Queries) CountAgentTaskSupplements(ctx context.Context, taskID pgtype.UUID) (int32, error) {
-	row := q.db.QueryRow(ctx, countAgentTaskSupplements, taskID)
-	var column_1 int32
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const createTaskSupplement = `-- name: CreateTaskSupplement :one
 WITH locked_task AS MATERIALIZED (
     SELECT t.id, t.issue_id, t.agent_id, t.trigger_comment_id
@@ -610,22 +595,6 @@ func (q *Queries) ListTaskSupplementsByCommentIDs(ctx context.Context, arg ListT
 		return nil, err
 	}
 	return items, nil
-}
-
-const lockTaskForAgentSupplement = `-- name: LockTaskForAgentSupplement :one
-SELECT id FROM agent_task_queue WHERE id = $1 FOR UPDATE
-`
-
-// Takes the run's row lock for the rest of the transaction. Agent-authored
-// steers count CountAgentTaskSupplements in a LATER statement of the same
-// transaction: a count inside the locking statement would read the snapshot
-// taken before the lock wait and miss a concurrent steer that committed while
-// this one waited, letting two requests both pass the cap.
-func (q *Queries) LockTaskForAgentSupplement(ctx context.Context, taskID pgtype.UUID) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, lockTaskForAgentSupplement, taskID)
-	var id pgtype.UUID
-	err := row.Scan(&id)
-	return id, err
 }
 
 const lockTaskSupplementsByComment = `-- name: LockTaskSupplementsByComment :many

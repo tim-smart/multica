@@ -22,6 +22,8 @@ type steerTarget struct {
 // resolveSteerTargets turns --steer run IDs and --steer-active into the runs
 // the comment is sent to. Every target must be an in-flight run of this issue,
 // and the caller's own runs are never targets: the server refuses a self-steer.
+// --steer-active relies on the server's can_supplement, which for an agent
+// caller is true only on runs of workers in a squad it leads.
 func resolveSteerTargets(ctx context.Context, client *cli.APIClient, issueID string, inputs []string, active bool) ([]steerTarget, error) {
 	if len(inputs) == 0 && !active {
 		return nil, nil
@@ -72,7 +74,7 @@ func resolveSteerTargets(ctx context.Context, client *cli.APIClient, issueID str
 			add(run)
 		}
 		if len(targets) == 0 {
-			fmt.Fprintln(os.Stderr, "No other running run on this issue can take your message; posting a normal comment.")
+			fmt.Fprintln(os.Stderr, "No running run on this issue that you may steer; posting a normal comment.")
 		}
 	}
 	for i := range targets {

@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
@@ -79,60 +80,41 @@ func (h *Handler) hydrateTaskSupplementMetadata(ctx context.Context, r *http.Req
 	}
 }
 
-// maxAgentSupplementsPerRun caps the agent-authored messages one running turn
-// accepts. Two running agents could otherwise steer each other back and forth
-// for as long as both turns stay open. Past the cap an agent's comment takes
-// the normal trigger path, where a busy agent's follow-ups coalesce into one
-// deferred run. Member messages are not counted.
-const maxAgentSupplementsPerRun = 5
-
-var errAgentSupplementLimit = errors.New("agent supplement limit reached")
-
-// agentMaySteer is the authorization an agent needs, on top of the member
-// rules, to add its comment to another agent's running turn: it never steers
-// its own turns, and it reaches only agents its @mention could start. The
-// trigger resolver already applied that invoke gate; it is re-checked so
-// steering never depends on how a recipient was routed.
+// agentMaySteer reports whether an agent author may add its comment to the
+// target agent's running turn. Only a squad leader steering one of its own
+// workers qualifies, and only when its @mention could start that worker.
+// Squad membership is what matters, not the issue's assignee: leaders also
+// hand workers child issues assigned to the worker directly.
 func (h *Handler) agentMaySteer(ctx context.Context, target db.Agent, actorID, originatorUserID, workspaceID string) bool {
-	if actorID == "" || uuidToString(target.ID) == actorID {
+	leaderID, err := util.ParseUUID(actorID)
+	if err != nil || target.ID == leaderID {
+		return false
+	}
+	if !h.leadsSquadOf(ctx, target.WorkspaceID, leaderID, target.ID) {
+		return false
+	}
+	// Two agents that each lead a squad containing the other could steer each
+	// other back and forth; neither may steer the other.
+	if h.leadsSquadOf(ctx, target.WorkspaceID, target.ID, leaderID) {
 		return false
 	}
 	return h.canInvokeAgent(ctx, target, "agent", actorID, originatorUserID, workspaceID)
 }
 
-// bindCommentTaskSupplement binds the comment to the chosen turn. An agent's
-// binding also enforces maxAgentSupplementsPerRun. The task row lock is taken
-// in its own statement before the count, so the count sees every steer that
-// committed while this request waited: concurrent agent comments are admitted
-// one at a time and cannot both pass the cap.
-func (h *Handler) bindCommentTaskSupplement(ctx context.Context, actorType string, params db.BindCommentTaskSupplementParams) (db.BindCommentTaskSupplementRow, error) {
-	if actorType != "agent" {
-		return h.Queries.BindCommentTaskSupplement(ctx, params)
-	}
-	tx, err := h.TxStarter.Begin(ctx)
+// leadsSquadOf reports whether leaderID leads a live squad workerID belongs to.
+func (h *Handler) leadsSquadOf(ctx context.Context, workspaceID, leaderID, workerID pgtype.UUID) bool {
+	squads, err := h.Queries.ListSquadsByMember(ctx, db.ListSquadsByMemberParams{
+		WorkspaceID: workspaceID, MemberType: "agent", MemberID: workerID,
+	})
 	if err != nil {
-		return db.BindCommentTaskSupplementRow{}, err
+		return false
 	}
-	defer tx.Rollback(ctx)
-	qtx := h.Queries.WithTx(tx)
-	if _, err := qtx.LockTaskForAgentSupplement(ctx, params.TaskID); err != nil {
-		return db.BindCommentTaskSupplementRow{}, err
+	for _, squad := range squads {
+		if squad.LeaderID == leaderID && !squad.ArchivedAt.Valid {
+			return true
+		}
 	}
-	count, err := qtx.CountAgentTaskSupplements(ctx, params.TaskID)
-	if err != nil {
-		return db.BindCommentTaskSupplementRow{}, err
-	}
-	if count >= maxAgentSupplementsPerRun {
-		return db.BindCommentTaskSupplementRow{}, errAgentSupplementLimit
-	}
-	bound, err := qtx.BindCommentTaskSupplement(ctx, params)
-	if err != nil {
-		return db.BindCommentTaskSupplementRow{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return db.BindCommentTaskSupplementRow{}, err
-	}
-	return bound, nil
+	return false
 }
 
 type taskSupplementReceiptResponse struct {
@@ -206,8 +188,8 @@ func applyCommentSupplements(resp *CommentResponse, receipts []CommentSupplement
 // ended, has not started, or cannot take additional input is never swapped
 // for another turn of the same agent; that recipient keeps its normal
 // queued / coalesced / deferred handling, so losing a race never drops or
-// misdirects the comment. The same fallback applies when an agent author is
-// refused by agentMaySteer or maxAgentSupplementsPerRun.
+// misdirects the comment. An agent author steers only as agentMaySteer
+// allows; any other chosen turn keeps the same normal handling.
 func (h *Handler) steerCommentAgentTriggers(ctx context.Context, issue db.Issue, comment db.Comment, actorType, actorID, originatorUserID string, triggers []commentAgentTrigger, steerTaskIDs []pgtype.UUID) ([]commentAgentTrigger, map[string]commentEnqueueResult) {
 	if len(steerTaskIDs) == 0 || len(triggers) == 0 || (actorType != "member" && actorType != "agent") {
 		return triggers, nil
@@ -235,15 +217,12 @@ func (h *Handler) steerCommentAgentTriggers(ctx context.Context, issue db.Issue,
 			continue
 		}
 		// The comment is its own request id: it binds to a turn at most once.
-		bound, err := h.bindCommentTaskSupplement(ctx, actorType, db.BindCommentTaskSupplementParams{
+		bound, err := h.Queries.BindCommentTaskSupplement(ctx, db.BindCommentTaskSupplementParams{
 			TaskID: taskID, IssueID: issue.ID, AgentID: trigger.Agent.ID, WorkspaceID: issue.WorkspaceID,
 			CommentID: comment.ID, AuthorID: comment.AuthorID, ClientRequestID: comment.ID,
 		})
 		if err != nil {
-			if errors.Is(err, errAgentSupplementLimit) {
-				slog.Info("agent steer refused: run reached its agent message limit",
-					"issue_id", uuidToString(issue.ID), "comment_id", uuidToString(comment.ID), "task_id", uuidToString(taskID))
-			} else if !errors.Is(err, pgx.ErrNoRows) {
+			if !errors.Is(err, pgx.ErrNoRows) {
 				slog.Warn("steer comment into running turn failed",
 					"issue_id", uuidToString(issue.ID), "comment_id", uuidToString(comment.ID), "task_id", uuidToString(taskID), "error", err)
 			}

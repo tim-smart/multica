@@ -125,21 +125,6 @@ SELECT inserted.*, locked_task.runtime_id
 FROM inserted
 JOIN locked_task ON locked_task.id = inserted.task_id;
 
--- name: LockTaskForAgentSupplement :one
--- Takes the run's row lock for the rest of the transaction. Agent-authored
--- steers count CountAgentTaskSupplements in a LATER statement of the same
--- transaction: a count inside the locking statement would read the snapshot
--- taken before the lock wait and miss a concurrent steer that committed while
--- this one waited, letting two requests both pass the cap.
-SELECT id FROM agent_task_queue WHERE id = @task_id FOR UPDATE;
-
--- name: CountAgentTaskSupplements :one
--- Every agent-authored message ever bound to this run, whatever its delivery
--- status: the loop guard caps how often agents can reach one turn.
-SELECT count(*)::int FROM task_supplement s
-JOIN comment c ON c.id = s.comment_id
-WHERE s.task_id = @task_id AND c.author_type = 'agent';
-
 -- name: GetTaskSupplementForRun :one
 SELECT * FROM task_supplement
 WHERE comment_id = @comment_id AND task_id = @task_id AND workspace_id = @workspace_id;

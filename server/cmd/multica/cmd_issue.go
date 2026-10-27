@@ -331,11 +331,11 @@ var issueCommentAddCmd = &cobra.Command{
 	Long: "Add a comment to an issue.\n\n" +
 		"A plain comment reaches a busy agent only after its current run ends. To add the message to a run " +
 		"that is in progress instead, pass --steer <run-id> (repeatable; from `multica issue runs <issue-id> --active`) " +
-		"or --steer-active for every other running run on the issue that can take it. The steered agents are " +
-		"mentioned in the comment, so the same invoke permission applies as for an @mention. Your own runs are " +
-		"never steered, a run takes a limited number of agent messages, and only Claude Code and Codex runs " +
-		"accept them. A run that cannot take the message gets the normal trigger; the command reports per run " +
-		"whether it was steered or queued, coalesced, deferred or blocked. Steering cannot carry attachments.",
+		"or --steer-active for every running run on the issue you may steer. An agent may steer only the runs of " +
+		"workers in a squad it leads, never its own; a member may steer any agent they can invoke. The steered " +
+		"agents are mentioned in the comment. Only Claude Code and Codex runs accept these messages. A run that " +
+		"cannot take the message gets the normal trigger; the command reports per run whether it was steered or " +
+		"queued, coalesced, deferred or blocked. Steering cannot carry attachments.",
 	Args: exactArgs(1),
 	RunE: runIssueCommentAdd,
 }
@@ -724,7 +724,7 @@ func init() {
 	issueCommentAddCmd.Flags().String("parent", "", "Parent comment ID to reply under. A comment-triggered agent run must reply under its trigger comment; omitting --parent to post a top-level comment is rejected")
 	issueCommentAddCmd.Flags().StringSlice("attachment", nil, "File path(s) to attach (can be specified multiple times). Non-image files, HTML included, show as file cards that open in the viewer; to render a chart inside the comment, put a ```html or ```mermaid block in the content instead")
 	issueCommentAddCmd.Flags().StringSlice("steer", nil, "Run ID (full UUID or short prefix) whose in-progress turn should receive this comment instead of a follow-up run (repeatable)")
-	issueCommentAddCmd.Flags().Bool("steer-active", false, "Steer every other running run on this issue that can take the message")
+	issueCommentAddCmd.Flags().Bool("steer-active", false, "Steer every running run on this issue you may steer (for an agent: its squad workers' runs)")
 	issueCommentAddCmd.Flags().String("output", "json", "Output format: table or json")
 
 	// issue comment update
