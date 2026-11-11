@@ -2007,6 +2007,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/table/facets", h.ListIssueTableFacets)
 				r.Get("/search", h.SearchIssues)
 				r.Get("/child-progress", h.ChildIssueProgress)
+				r.Get("/pull-requests", h.ListIssuePullRequestSummaries)
 				r.Get("/children", h.ListChildrenByParents)
 				r.Get("/grouped", h.ListGroupedIssues)
 				r.Get("/", h.ListIssues)
