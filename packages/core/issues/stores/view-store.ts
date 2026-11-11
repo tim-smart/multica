@@ -54,6 +54,7 @@ export type TableSystemColumnKey =
   | "created_at"
   | "updated_at"
   | "child_progress"
+  | "pull_requests"
   | "creator";
 export type TableColumnKey = TableSystemColumnKey | `property:${string}`;
 export interface TableColumnConfig {
@@ -81,6 +82,7 @@ export const TABLE_SYSTEM_COLUMNS: readonly TableSystemColumnKey[] = [
   "created_at",
   "updated_at",
   "child_progress",
+  "pull_requests",
   "creator",
 ];
 
@@ -110,6 +112,7 @@ export interface CardProperties {
   project: boolean;
   childProgress: boolean;
   labels: boolean;
+  pullRequests: boolean;
 }
 
 export interface ActorFilterValue {
@@ -179,6 +182,7 @@ export const CARD_PROPERTY_OPTIONS: { key: keyof CardProperties; label: string }
   { key: "project", label: "Project" },
   { key: "labels", label: "Labels" },
   { key: "childProgress", label: "Sub-issue progress" },
+  { key: "pullRequests", label: "Pull requests" },
 ];
 
 export const DEFAULT_CARD_PROPERTIES: Readonly<CardProperties> = {
@@ -190,6 +194,7 @@ export const DEFAULT_CARD_PROPERTIES: Readonly<CardProperties> = {
   project: true,
   childProgress: true,
   labels: false,
+  pullRequests: false,
 };
 
 export const DEFAULT_HIDDEN_STATUSES: readonly IssueStatus[] = [

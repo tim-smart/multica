@@ -47,6 +47,7 @@ import type {
   GroupedIssuesResponse,
   GitHubConnectResponse,
   IssuePullRequestsResponse,
+  IssuePullRequestSummariesResponse,
   InboxItem,
   InboxWorkspaceUnread,
   Label,
@@ -447,6 +448,36 @@ export const IssuePullRequestsResponseSchema = z.object({
 export const EMPTY_ISSUE_PULL_REQUESTS_RESPONSE: IssuePullRequestsResponse = {
   pull_requests: [],
   auto_complete: null,
+};
+
+// A malformed row is dropped rather than failing the whole workspace read, so
+// one bad link never blanks the PR chips on every card.
+const IssuePullRequestSummarySchema = z.object({
+  issue_id: z.string(),
+  id: z.string(),
+  provider: z.string().optional().default("github"),
+  repo_owner: z.string(),
+  repo_name: z.string(),
+  number: z.number(),
+  title: z.string().optional().default(""),
+  state: z.string(),
+  html_url: z.string(),
+}).loose();
+
+export const IssuePullRequestSummariesResponseSchema = z.object({
+  pull_requests: z
+    .array(z.unknown())
+    .default([])
+    .transform((rows) =>
+      rows.flatMap((row) => {
+        const parsed = IssuePullRequestSummarySchema.safeParse(row);
+        return parsed.success ? [parsed.data] : [];
+      }),
+    ),
+}).loose();
+
+export const EMPTY_ISSUE_PULL_REQUEST_SUMMARIES_RESPONSE: IssuePullRequestSummariesResponse = {
+  pull_requests: [],
 };
 
 // Label responses are consumed by settings tables and resource pickers. Keep

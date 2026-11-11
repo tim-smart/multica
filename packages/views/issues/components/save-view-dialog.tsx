@@ -138,6 +138,7 @@ const CARD_PROPERTY_LABEL_KEY = {
   project: "card_project",
   labels: "card_labels",
   childProgress: "card_child_progress",
+  pullRequests: "card_pull_requests",
 } as const;
 
 /** Data-only snapshot: `partialize` strips the store's bound actions (which

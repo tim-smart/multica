@@ -173,6 +173,7 @@ import type {
   PluginInstallRequest,
   PluginConfigRequest,
   IssuePullRequestsResponse,
+  IssuePullRequestSummariesResponse,
   ListGitHubInstallationsResponse,
   ListGitHubRepositoriesResponse,
   GitHubConnectResponse,
@@ -422,6 +423,8 @@ import {
   EMPTY_ISSUE_PROPERTIES_RESPONSE,
   EMPTY_ISSUE_PULL_REQUESTS_RESPONSE,
   IssuePullRequestsResponseSchema,
+  EMPTY_ISSUE_PULL_REQUEST_SUMMARIES_RESPONSE,
+  IssuePullRequestSummariesResponseSchema,
   ResourceLabelsResponseSchema,
   EMPTY_LABEL,
   EMPTY_LIST_LABELS_RESPONSE,
@@ -4812,6 +4815,17 @@ export class ApiClient {
       IssuePullRequestsResponseSchema,
       EMPTY_ISSUE_PULL_REQUESTS_RESPONSE,
       { endpoint: "GET /api/issues/:id/pull-requests" },
+    );
+  }
+
+  /** Every linked PR in the workspace, for PR chips on issue cards and rows. */
+  async listIssuePullRequestSummaries(): Promise<IssuePullRequestSummariesResponse> {
+    const raw = await this.fetch<unknown>("/api/issues/pull-requests");
+    return parseWithFallback(
+      raw,
+      IssuePullRequestSummariesResponseSchema,
+      EMPTY_ISSUE_PULL_REQUEST_SUMMARIES_RESPONSE,
+      { endpoint: "GET /api/issues/pull-requests" },
     );
   }
 
